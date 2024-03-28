@@ -11,7 +11,9 @@ import argparse
 import os
 from model import Diffusion
 from deepspeed_config import  deepspeed_config_from_args
-from utils import plot_loss_curve_and_save, save_model, load_training_config
+from utils import load_training_config
+from peft.utils import get_peft_model_state_dict
+from diffusers.utils import convert_state_dict_to_diffusers
 
 
 # os.environ['https_proxy']="http://127.0.0.1:7890"
@@ -129,8 +131,9 @@ def main():
                         f"[epoch: {epoch + 1 : d}, step: {i + 1 : 5d}] Loss: {running_loss/cfg.log_interval : .3f} Time/Batch: {used_time/cfg.log_interval:6.4f}s")
                     last_time = time.time()
                 running_loss = 0.0
-            # save checkpoint
-            model_engine.save_checkpoint(f"{cfg.output_dir}")
+            if i % cfg.save_interval == 0:
+                # save checkpoint
+                model_engine.save_checkpoint(f"{cfg.output_dir}")
     if local_rank == 0:
         logging.info(f"Total training time: {time.time() - start_time:6.4f}s")
         if not cfg.lora:
@@ -142,6 +145,15 @@ def main():
                 variant=weight_dtype,
             )
             pipeline.save_pretrained(cfg.output_dir)
+        else:
+            unet_lora_state_dict = convert_state_dict_to_diffusers(
+                get_peft_model_state_dict(model_engine.to(torch.float32)))
+            StableDiffusionPipeline.save_lora_weights(
+                save_directory=cfg.output_dir,
+                unet_lora_layers=unet_lora_state_dict,
+                safe_serialization=True,
+                weight_name=cfg.ckpt_name + '.safetensor'
+            )
 
 
 if __name__ == '__main__':

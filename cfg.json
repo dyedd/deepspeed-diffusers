@@ -1,6 +1,8 @@
 {
   "num_epochs": 10,
-  "lora": false,
+  "lora": true,
+  "save_interval": 50,
+  "ckpt_name": "pokemon",
   "pretrained_model_name_or_path": "/home/dcuuser/dxm/diffusers/model/stable-diffusion-v1-5",
   "output_dir": "FineTunedStableDiffusion",
   "dataset_dir": "./pokemon-blip-captions",
