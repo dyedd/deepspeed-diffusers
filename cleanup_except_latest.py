@@ -13,7 +13,7 @@ def cleanup_except_latest(cfg):
 
     # 添加到保留列表
     folders_to_keep.append("latest")
-    folders_to_keep.append(cfg.output_dir + '/' + cfg.ckpt_name)
+    folders_to_keep.append(cfg.ckpt_name)
 
     # 获取目录下的所有文件和文件夹
     all_items = os.listdir(directory_path)
