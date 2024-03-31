@@ -1,22 +1,16 @@
-import random
-import time
-import numpy as np
+import deepspeed
 import torch
 from diffusers import StableDiffusionPipeline
-from torchvision import transforms
-import deepspeed
-from loguru import logger as logging
-from datasets import load_dataset
-import argparse
-import os
-from model import Diffusion
-from deepspeed_config import  deepspeed_config_from_args
-from utils import load_training_config
-from peft.utils import get_peft_model_state_dict
 from diffusers.utils import convert_state_dict_to_diffusers
-
-
-# os.environ['https_proxy']="http://127.0.0.1:7890"
+from model import Diffusion
+import time
+import os
+import argparse
+from loguru import logger as logging
+from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
+from deepspeed_config import deepspeed_config_from_args
+from utils import load_training_config
+from custom_dataset import load_custom_dataset
 
 
 def main():
@@ -28,61 +22,13 @@ def main():
     cfg_path = args.cfg
     cfg = load_training_config(cfg_path)
 
-    # 初始化分布式训练
-    deepspeed.init_distributed()
-    # 初始化数据集
-    logging.debug("init dataset")
-    # 加载数据集
-    dataset = load_dataset(cfg.dataset_dir)
-    column_names = dataset["train"].column_names
-    image_column, caption_column = column_names
-
-    train_transforms = transforms.Compose(
-        [
-            transforms.Resize(cfg.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(cfg.resolution) if cfg.center_crop else transforms.RandomCrop(cfg.resolution),
-            transforms.RandomHorizontalFlip() if cfg.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
-    # 预处理文本的函数
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
-                )
-        inputs = model.tokenizer(
-            captions, max_length=model.tokenizer.model_max_length, padding="max_length", truncation=True,
-            return_tensors="pt"
-        )
-        return inputs.input_ids
-
-    # 自定义数据转换函数
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        examples["pixel_values"] = [train_transforms(image) for image in images]
-        examples["input_ids"] = tokenize_captions(examples)
-        return examples
-
-    # 自定义批处理函数
-    def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        input_ids = torch.stack([example["input_ids"] for example in examples])
-        return {"pixel_values": pixel_values, "input_ids": input_ids}
-
-    # 如果设置一个gpu转换会怎么样？
-    train_dataset = dataset['train'].with_transform(preprocess_train)
-
+    if args.local_rank == -1:
+        device = torch.device("cuda")
+    else:
+        torch.cuda.set_device(args.local_rank)
+        device = torch.device("cuda", args.local_rank)
+        # 初始化分布式训练
+        deepspeed.init_distributed()
 
     # 初始化模型
     logging.debug("init model")
@@ -90,7 +36,35 @@ def main():
         weight_dtype = torch.float16
     else:
         weight_dtype = torch.float32
-    model = Diffusion(cfg.pretrained_model_name_or_path, weight_dtype=weight_dtype, is_lora=cfg.lora, rank=int(os.environ["WORLD_SIZE"]))
+    model = Diffusion(cfg.pretrained_model_name_or_path)
+
+    if cfg.use_lora.action:
+        # 冻结Unet的权重
+        for param in model.unet.parameters():
+            param.requires_grad_(False)
+        unet_lora_config = LoraConfig(
+            r=torch.cuda.device_count(),
+            lora_alpha=torch.cuda.device_count(),
+            init_lora_weights="gaussian",
+            target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        )
+        model = get_peft_model(model, unet_lora_config)
+        cfg.output_dir = cfg.output_dir + "-lora"
+
+    # 移动到GPU
+    model.unet.to(device, dtype=weight_dtype)
+    model.text_encoder.to(device, dtype=weight_dtype)
+    model.vae.to(device, dtype=weight_dtype)
+
+    if cfg.use_lora.action and weight_dtype == torch.float16:
+        for param in model.unet.parameters():
+            # 训练LoRA的参数只能是fp32
+            if param.requires_grad:
+                param.data = param.to(torch.float32)
+
+    # 初始化数据集
+    logging.debug("init dataset")
+    train_dataset, collate_fn = load_custom_dataset(cfg, model)
 
     # 初始化引擎
     logging.debug("init engine")
@@ -105,51 +79,62 @@ def main():
         config_params=deepspeed_config,
     )
 
-    local_rank = model_engine.local_rank
+    # Train!
+    logging.info("***** Running training *****")
+    logging.info(f"  Num examples = {len(train_dataset)}")
+    logging.info(f"  Num Epochs = {cfg.num_epochs}")
+    logging.info(f"  Instantaneous batch size per device = {cfg.train_micro_batch_size_per_gpu}")
+    logging.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
 
     # 加载检查点
-    if os.path.exists(cfg.output_dir):
+    # 使用lora训练的时候不要加载原来的权重了，因为保存的权重并不是Unet权重，导入会出错
+    if os.path.exists(cfg.output_dir) and not cfg.use_lora.action:
         model_engine.load_checkpoint(f"./{cfg.output_dir}/")
 
-    # train
-    start_time = time.time()
-    for epoch in range(cfg.num_epochs) :
+    if cfg.use_lora.action:
         model_engine.train()
+    else:
+        model_engine.unet.train()
+
+    local_rank = model_engine.local_rank
+    start_time = time.time()
+    for epoch in range(cfg.num_epochs):
         # 记录训练开始时间
         last_time = time.time()
         running_loss = 0.0
-        for i, data in enumerate(training_dataloader):
-            images,texts = data['pixel_values'].to(model_engine.device,dtype=weight_dtype), data['input_ids'].to(model_engine.device, dtype=torch.long)
+        for step, batch in enumerate(training_dataloader):
+            images, texts = batch['pixel_values'].to(model_engine.device, dtype=weight_dtype), batch['input_ids'].to(
+                model_engine.device)
             loss = model_engine(images, texts)
             model_engine.backward(loss)
             model_engine.step()
             running_loss += loss.item()
-            if i % cfg.log_interval == 0:
+            if step % cfg.log_interval == 0:
                 if local_rank == 0:
                     used_time = time.time() - last_time
                     logging.info(
-                        f"[epoch: {epoch + 1 : d}, step: {i + 1 : 5d}] Loss: {running_loss/cfg.log_interval : .3f} Time/Batch: {used_time/cfg.log_interval:6.4f}s")
+                        f"[epoch: {epoch + 1 : d}, step: {step + 1 : 5d}] Loss: {running_loss / cfg.log_interval : .3f} Time/Batch: {used_time / cfg.log_interval:6.4f}s")
                     last_time = time.time()
                 running_loss = 0.0
-            if i % cfg.save_interval == 0:
+            if step % cfg.save_interval == 0:
                 # save checkpoint
                 model_engine.save_checkpoint(f"{cfg.output_dir}")
     if local_rank == 0:
         logging.info(f"Total training time: {time.time() - start_time:6.4f}s")
-        if not cfg.lora:
+        if not cfg.use_lora.action:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 cfg.pretrained_model_name_or_path,
+                unet = model_engine.unet,
                 text_encoder=model_engine.text_encoder,
                 vae=model_engine.vae,
-                unet=model_engine.unet,
-                variant=weight_dtype,
+                torch_dtype=weight_dtype
             )
-            pipeline.save_pretrained(cfg.output_dir)
+            pipeline.save_pretrained(cfg.output_dir + '/' + cfg.ckpt_name, torch_dtype=weight_dtype)
         else:
             unet_lora_state_dict = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(model_engine.to(torch.float32)))
             StableDiffusionPipeline.save_lora_weights(
-                save_directory=cfg.output_dir,
+                save_directory=cfg.use_lora.output_dir,
                 unet_lora_layers=unet_lora_state_dict,
                 safe_serialization=True,
                 weight_name=cfg.ckpt_name + '.safetensor'
@@ -159,4 +144,3 @@ def main():
 if __name__ == '__main__':
     torch.cuda.empty_cache()
     main()
-
