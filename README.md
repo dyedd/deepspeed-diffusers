@@ -4,7 +4,7 @@
 
 **`deepspeed-diffusers`** 是一个结合`Deepspeed`和`Diffusers`库来训练扩散模型（Diffusion Models）的项目。
 
-`Diffusers`是目前最受欢迎的预训练扩散模型的首选集成库。然而由于产品的绑定，许多用于`Diffusers`并行的脚本绝大部分都是通过`Huggingface`另一个产品`Accelerate`集成的。
+`Diffusers`是目前最受欢迎的预训练扩散模型的首选集成库。然而由于产品的绑定，许多用于`Diffusers`并行训练的脚本绝大部分都是通过`Huggingface`另一个产品`Accelerate`集成的。
 
 > [!IMPORTANT]
 > `Accelerate`同样也是一个统一API操作的库，但截止目前本项目的发布，`Accelerate`明确表示并不完全支持`Deepspeed`。
@@ -22,7 +22,7 @@
 4. 等等，等待您的发掘~
 
 ## 最近更新 🔥 
-- [2024/03/31] 支持`lora`微调，修复了全量微调后的生成图片总是黑色图片的问题。
+- [2024/03/31] 支持`lora`微调，修复了全量微调后的生成图片总是黑色图片的问题，增加了`slurm`脚本
 - [2024/03/29] **`deepspeed-diffusers`** 发布了，支持`Unet`全量微调。
 
 ## 演示
