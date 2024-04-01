@@ -66,8 +66,8 @@ modify `pretrained_model_name_or_path` in cfg.json.
 
 This project supports 2 training modes.
 
-1. Full fine-tuning of unet, with memory consumption roughly between 12 to 20GB under mixed precision.
-2. lora+unet, with memory consumption roughly between 4 to 9.63GB under mixed precision.
+1. Full fine-tuning of unet, with 210 iterations at mixed precision, is roughly 12 to 20 GB of video memory.
+2. lora+unet, with 210 iterations at mixed precision, is roughly 4 to 9.63 GB of video memory.
 
 Modify `use_lora.action` in cfg.json to `true` to support mode 2.
 
