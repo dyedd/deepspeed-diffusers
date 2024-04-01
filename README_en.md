@@ -22,6 +22,7 @@ The advantages of this project include:
 4. And more, waiting for you to discover~
 
 ## Recent Updates 🔥 
+- [2024/04/01] Support for `wandb`.
 - [2024/03/31] Support for `lora` fine-tuning, fixed the issue where the generated images were always black after full fine-tuning, Added `slurm` scripts
 - [2024/03/29] **`deepspeed-diffusers`** was released, supporting full fine-tuning of `Unet`.
 
