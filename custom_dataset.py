@@ -1,8 +1,10 @@
-import torch
-from torchvision import transforms
-from datasets import load_dataset
 import random
+
 import numpy as np
+import torch
+from datasets import load_dataset
+from torchvision import transforms
+
 
 def load_custom_dataset(cfg, model):
     # 加载数据集

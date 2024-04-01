@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from diffusers import DDPMScheduler, StableDiffusionPipeline, AutoencoderKL, UNet2DConditionModel
+from diffusers import DDPMScheduler, AutoencoderKL, UNet2DConditionModel
 from transformers import CLIPTokenizer, CLIPTextModel
 
 
@@ -18,6 +18,7 @@ class Diffusion(nn.Module):
         # 冻结VAE和text_encoder
         self.vae.requires_grad_(False)
         self.text_encoder.requires_grad_(False)
+
     def forward(self, images, texts):
         # train step
         with torch.no_grad():
@@ -48,7 +49,7 @@ class Diffusion(nn.Module):
                     f"Unknown prediction type {self.noise_scheduler.config.prediction_type}")
 
         # 预测噪声残差并计算损失
-        model_pred  = self.unet(noisy_latents, timesteps, text_tokens, return_dict=False)[0]
+        model_pred = self.unet(noisy_latents, timesteps, text_tokens, return_dict=False)[0]
 
         loss = F.mse_loss(model_pred.float(),
                           target.float(), reduction="mean")

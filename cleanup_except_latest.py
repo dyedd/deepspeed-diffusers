@@ -1,7 +1,9 @@
+import argparse
 import os
 import shutil
-import argparse
+
 from utils import load_training_config
+
 
 def cleanup_except_latest(cfg):
     directory_path = cfg.output_dir

@@ -1,16 +1,21 @@
+import argparse
+import os
+import time
+
 import deepspeed
 import torch
+import wandb
 from diffusers import StableDiffusionPipeline
 from diffusers.utils import convert_state_dict_to_diffusers
-from model import Diffusion
-import time
-import os
-import argparse
 from loguru import logger as logging
 from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
-from deepspeed_config import deepspeed_config_from_args
-from utils import load_training_config
+
 from custom_dataset import load_custom_dataset
+from deepspeed_config import deepspeed_config_from_args
+from model import Diffusion
+from utils import load_training_config
+
+os.environ["WANDB_MODE"] = "offline"
 
 
 def main():
@@ -80,11 +85,7 @@ def main():
     )
 
     # Train!
-    logging.info("***** Running training *****")
-    logging.info(f"  Num examples = {len(train_dataset)}")
-    logging.info(f"  Num Epochs = {cfg.num_epochs}")
-    logging.info(f"  Instantaneous batch size per device = {cfg.train_micro_batch_size_per_gpu}")
-    logging.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
+    local_rank = model_engine.local_rank
 
     # 加载检查点
     # 使用lora训练的时候不要加载原来的权重了，因为保存的权重并不是Unet权重，导入会出错
@@ -96,7 +97,15 @@ def main():
     else:
         model_engine.unet.train()
 
-    local_rank = model_engine.local_rank
+    if local_rank == 0:
+        # 启动日志
+        wandb.init(project=cfg.wandb_project)
+        logging.info("***** Running training *****")
+        logging.info(f"  Num examples = {len(train_dataset)}")
+        logging.info(f"  Num Epochs = {cfg.num_epochs}")
+        logging.info(f"  Instantaneous batch size per device = {cfg.train_micro_batch_size_per_gpu}")
+        logging.info(f"  Gradient Accumulation steps = {cfg.gradient_accumulation_steps}")
+
     start_time = time.time()
     for epoch in range(cfg.num_epochs):
         # 记录训练开始时间
@@ -112,6 +121,8 @@ def main():
             if step % cfg.log_interval == 0:
                 if local_rank == 0:
                     used_time = time.time() - last_time
+                    wandb.log({"epoch": epoch + 1, "step": step + 1, "loss": running_loss / cfg.log_interval,
+                               "Time/Batch": used_time / cfg.log_interval})
                     logging.info(
                         f"[epoch: {epoch + 1 : d}, step: {step + 1 : 5d}] Loss: {running_loss / cfg.log_interval : .3f} Time/Batch: {used_time / cfg.log_interval:6.4f}s")
                     last_time = time.time()
@@ -124,7 +135,7 @@ def main():
         if not cfg.use_lora.action:
             pipeline = StableDiffusionPipeline.from_pretrained(
                 cfg.pretrained_model_name_or_path,
-                unet = model_engine.unet,
+                unet=model_engine.unet,
                 text_encoder=model_engine.text_encoder,
                 vae=model_engine.vae,
                 torch_dtype=weight_dtype
@@ -139,6 +150,7 @@ def main():
                 safe_serialization=True,
                 weight_name=cfg.ckpt_name + '.safetensor'
             )
+    wandb.finish()
 
 
 if __name__ == '__main__':
