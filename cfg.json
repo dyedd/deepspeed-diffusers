@@ -1,23 +1,31 @@
 {
   "num_epochs": 1,
+  "seed": 1234,
+  "pretrained_model_name_or_path": "/home/dcuuser/dxm/diffusers/model/stable-diffusion-v1-5",
+  "dataset_dir": "./pokemon-blip-captions",
+  "output_dir": "FineTunedStableDiffusion",
+  "ckpt_name": "pokemon",
+  "save_interval": 50,
   "use_lora": {
     "action": false,
     "output_dir": "StableDiffusion-Lora"
   },
-  "save_interval": 50,
-  "ckpt_name": "pokemon",
-  "pretrained_model_name_or_path": "/home/dcuuser/dxm/diffusers/model/stable-diffusion-v1-5",
-  "output_dir": "FineTunedStableDiffusion",
-  "dataset_dir": "./pokemon-blip-captions",
   "resolution": 512,
   "center_crop": false,
   "random_flip": false,
-  "wandb_project": "deepspeed-diffusers",
-  "use_fp16": true,
-  "train_micro_batch_size_per_gpu": 2,
+  "use_fp16": {
+    "enabled": true,
+    "auto_cast": false,
+    "loss_scale": 0,
+    "initial_scale_power": 16,
+    "loss_scale_window": 1000,
+    "hysteresis": 2,
+    "consecutive_hysteresis": false,
+    "min_loss_scale": 1
+  },
+  "train_micro_batch_size_per_gpu": 6,
   "gradient_accumulation_steps": 1,
   "log_interval": 10,
-  "communication_data_type": "fp16",
   "optimizer": {
     "type": "AdamW",
     "params": {
@@ -38,5 +46,10 @@
       "warmup_num_steps": 1000
     }
   },
-  "wall_clock_breakdown": false
+  "wall_clock_breakdown": false,
+  "wandb": {
+    "enabled": true,
+    "group": "ddp",
+    "project": "deepspeed-diffusers"
+  }
 }

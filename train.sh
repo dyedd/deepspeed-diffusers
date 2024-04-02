@@ -1,3 +1,3 @@
 #!/bin/bash
 
-deepspeed ds_sd_train.py --cfg=cfg.json
+deepspeed --num_gpus=2 ds_sd_train.py --cfg=cfg.json
