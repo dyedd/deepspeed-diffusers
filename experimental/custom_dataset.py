@@ -6,11 +6,18 @@ from datasets import load_dataset
 from torchvision import transforms
 
 
-def load_custom_dataset(cfg, model):
+def load_custom_dataset(cfg, tokenizer, image_column_mapping=None, caption_column_mapping=None):
     # 加载数据集
     dataset = load_dataset(cfg.dataset_dir)
     column_names = dataset["train"].column_names
-    image_column, caption_column = column_names
+    if image_column_mapping is None:
+        image_column = column_names[0]
+    else:
+        image_column = image_column_mapping
+    if caption_column_mapping is None:
+        caption_column = column_names[1]
+    else:
+        caption_column = caption_column_mapping
 
     train_transforms = transforms.Compose(
         [
@@ -35,8 +42,8 @@ def load_custom_dataset(cfg, model):
                 raise ValueError(
                     f"Caption column `{caption_column}` should contain either strings or lists of strings."
                 )
-        inputs = model.tokenizer(
-            captions, max_length=model.tokenizer.model_max_length, padding="max_length", truncation=True,
+        inputs = tokenizer(
+            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True,
             return_tensors="pt"
         )
         return inputs.input_ids
@@ -53,6 +60,13 @@ def load_custom_dataset(cfg, model):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
+        if caption_column_mapping and caption_column_mapping.startswith("zh"):
+            padded_tokens = tokenizer.pad({"input_ids": input_ids}, padding=True, return_tensors="pt")
+            return {
+                "pixel_values": pixel_values,
+                "input_ids": padded_tokens.input_ids,
+                "attention_mask": padded_tokens.attention_mask
+            }
         return {"pixel_values": pixel_values, "input_ids": input_ids}
 
     return dataset['train'].with_transform(preprocess_train), collate_fn

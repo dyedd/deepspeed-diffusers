@@ -1,0 +1,81 @@
+{
+  "num_epochs": 1,
+  "validation_epochs": 10,
+  "max_train_steps": 0,
+  "lr_warmup_steps": 500,
+  "save_interval": 1000,
+  "seed": 1234,
+  "validation_prompts": ["water turtle"],
+  "pretrained_model_name_or_path": "/data0/share/dxm/model/stable-diffusion-v1-5",
+  "dataset_dir": "/data0/share/dxm/datasets/pokemon-blip-captions",
+  "imagefolder": false,
+  "checkpoint_dir": "/data0/share/dxm/sd-result/checkpoint-test",
+  "output_dir": "/data0/share/dxm/sd-result/sd-pokemon2",
+  "use_lora": {
+    "action": false,
+    "rank": 8,
+    "alpha": 32
+  },
+  "dataloader_num_workers": 8,
+  "resume_from_checkpoint": true,
+  "use_ema": false,
+  "offline": true,
+  "resolution": 512,
+  "center_crop": true,
+  "random_flip": true,
+  "use_fp16": {
+    "enabled": true,
+    "auto_cast": false,
+    "loss_scale": 0,
+    "initial_scale_power": 16,
+    "loss_scale_window": 1000,
+    "hysteresis": 2,
+    "consecutive_hysteresis": false,
+    "min_loss_scale": 1
+  },
+  "train_micro_batch_size_per_gpu": 1,
+  "gradient_accumulation_steps": 32,
+  "optimizer": {
+    "type": "AdamW",
+    "params": {
+      "lr": 1e-4,
+      "betas": [
+        0.9,
+        0.999
+      ],
+      "eps": 1e-08,
+      "weight_decay": 0.01
+    }
+  },
+  "scheduler": {
+    "type": "WarmupLR",
+    "params": {
+      "warmup_min_lr": 0,
+      "warmup_max_lr": 0.0001,
+      "warmup_num_steps": 1000
+    }
+  },
+  "wall_clock_breakdown": false,
+  "wandb": {
+    "enabled": false,
+    "group": "ddp",
+    "project": "deepspeed-diffusers"
+  },
+  "flops_profiler": {
+    "enabled": false,
+    "profile_step": 1,
+    "module_depth": -1,
+    "top_modules": 1,
+    "detailed": true,
+    "output_file": null
+  },
+  "zero_optimization": {
+    "stage": 1,
+    "offload_param": {
+      "device": "auto"
+    },
+    "offload_optimizer": {
+      "device": "auto"
+    }
+  }
+}
