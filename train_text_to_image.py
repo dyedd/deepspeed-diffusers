@@ -1,21 +1,21 @@
 import argparse
 import logging
+import math
 import os
 
 import deepspeed
-import math
 import torch
 import torch.nn.functional as F
 from deepspeed import get_accelerator
-from diffusers import StableDiffusionPipeline, UNet2DConditionModel, DDPMScheduler, AutoencoderKL
+from diffusers import (AutoencoderKL, DDPMScheduler, StableDiffusionPipeline,
+                       UNet2DConditionModel)
 from diffusers.training_utils import EMAModel
 from diffusers.utils import convert_state_dict_to_diffusers
 from peft import LoraConfig, get_peft_model_state_dict
 from tqdm.auto import tqdm
-from transformers import CLIPTokenizer, CLIPTextModel
-
-from utils import load_training_config, set_random_seed, is_rank_0, load_custom_dataset, \
-    deepspeed_config_from_args, log_validation
+from transformers import CLIPTextModel, CLIPTokenizer
+from utils import (deepspeed_config_from_args, is_rank_0, load_custom_dataset,
+                   load_training_config, log_validation, set_random_seed)
 
 
 def main():
@@ -180,7 +180,6 @@ def main():
         disable=not is_rank_0(),
     )
 
-    best_loss = float('inf')
     for epoch in range(first_epoch, cfg.num_epochs):
         unet.train()
         for step, batch in enumerate(train_dataloader):
@@ -229,10 +228,8 @@ def main():
                 logs = {"epoch": f"{epoch + 1 : d}", "loss": f"{loss.item():.6f}"}
                 progress_bar.set_postfix(**logs)
                 progress_bar.update(1)
-                if step % cfg.save_interval == 0:
+                if step % cfg.save_interval == 0 and is_rank_0():
                     unet.save_checkpoint(f"{cfg.checkpoint_dir}")
-                if loss < best_loss and is_rank_0():
-                    best_loss = loss
                     logging.info("转换为SD权重...")
                     if not cfg.use_lora.action:
                         if cfg.use_ema:
@@ -252,7 +249,7 @@ def main():
                         )
                         if weight_dtype == torch.float16:
                             unet.module.to(torch.float16)
-                    logging.info(f'权重转换完成____当前保存的是：{global_step + 1}___best loss: {best_loss.item():.6f}')
+                    logging.info(f'权重转换完成____当前保存的是：{global_step + 1}__loss: {loss.item():.6f}')
                 global_step += 1
         if global_step >= cfg.max_train_steps:
             break

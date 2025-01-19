@@ -4,16 +4,18 @@
   "max_train_steps": 0,
   "lr_warmup_steps": 500,
   "save_interval": 1000,
-  "seed": 1234,
-  "validation_prompts": ["water turtle"],
-  "pretrained_model_name_or_path": "/data0/share/dxm/model/stable-diffusion-v1-5",
-  "dataset_dir": "/data0/share/dxm/datasets/pokemon-blip-captions",
+  "seed": 42,
+  "validation_prompts": [
+    "water turtle"
+  ],
+  "pretrained_model_name_or_path": "model/stable-diffusion-v1-5",
+  "dataset_dir": "datasets/pokemon-blip-captions",
   "imagefolder": false,
-  "checkpoint_dir": "/data0/share/dxm/sd-result/checkpoint-test",
-  "output_dir": "/data0/share/dxm/sd-result/sd-pokemon2",
+  "checkpoint_dir": "sd-result/checkpoint-test",
+  "output_dir": "/sd-result/sd-pokemon",
   "use_lora": {
     "action": false,
-    "rank": 8,
+    "rank": 32,
     "alpha": 32
   },
   "dataloader_num_workers": 8,
